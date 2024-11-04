@@ -10,43 +10,23 @@ const upload = multer({ storage: storage });
 const createProduct = async (req, res) => {
     const { name, description, price, available = true, isHidden = false } = req.body;
 
-
-    const file = req.file;
-    if (!file) {
+    
+    if (!req.file) {
         return res.status(400).send('Image is required.');
     }
 
     try {
+       
+        const imageUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
 
-        const blob = admin.storage().bucket().file(`products/${Date.now()}_${file.originalname}`); 
-        const blobStream = blob.createWriteStream({
-            metadata: {
-                contentType: file.mimetype,
-            },
-        });
-
-
-        const imageUrlPromise = new Promise((resolve, reject) => {
-            blobStream.on('error', (error) => reject(error));
-            blobStream.on('finish', () => {
-              
-                blob.makePublic()
-                    .then(() => resolve(`https://storage.googleapis.com/${blob.metadata.bucket}/${blob.name}`))
-                    .catch(reject);
-            });
-            blobStream.end(file.buffer);
-        });
-
-        const imageUrl = await imageUrlPromise;
-
-
+     
         const productRef = await admin.firestore().collection('products').add({
             name,
             description,
             price,
             available,
             isHidden,
-            imageUrl,
+            imageUrl, 
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
@@ -56,6 +36,7 @@ const createProduct = async (req, res) => {
         res.status(500).send('Error creating product');
     }
 };
+
 
 
 const getProducts = async (req, res) => {
@@ -78,8 +59,9 @@ const updateProduct = async (req, res) => {
     const { id } = req.params;
     const { name, description, price, available, isHidden } = req.body;
 
-    if (!name && !description && !price && available === undefined && isHidden === undefined) {
-        return res.status(400).send('At least one field (name, description, price, available, isHidden) is required for update.');
+   
+    if (!name && !description && !price && available === undefined && isHidden === undefined && !req.file) {
+        return res.status(400).send('At least one field (name, description, price, available, isHidden) or an image is required for update.');
     }
 
     try {
@@ -91,6 +73,13 @@ const updateProduct = async (req, res) => {
             ...(available !== undefined && { available }),
             ...(isHidden !== undefined && { isHidden }),
         };
+
+ 
+        if (req.file) {
+            const imageUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+            updates.imageUrl = imageUrl; 
+        }
+
         await productRef.update(updates);
 
         res.status(200).send(`Product with ID: ${id} updated successfully.`);
@@ -99,6 +88,7 @@ const updateProduct = async (req, res) => {
         res.status(500).send('Error updating product');
     }
 };
+
 
 
 const deleteProduct = async (req, res) => {
