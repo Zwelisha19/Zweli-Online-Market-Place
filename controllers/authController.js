@@ -1,7 +1,6 @@
 const admin = require('../config/firebaseConfig');
 const bcrypt = require('bcryptjs');
 
-
 const registerUser = async (req, res) => {
     const { email, password } = req.body;
 
@@ -11,14 +10,26 @@ const registerUser = async (req, res) => {
 
     try {
         const hashedPassword = await bcrypt.hash(password, 10);
-        const userRef = await admin.firestore().collection('users').add({
+
+        
+        const userRecord = await admin.auth().createUser({
             email,
-            password: hashedPassword,
+            password,
         });
-        res.status(201).send(`User registered with ID: ${userRef.id}`);
+
+        await admin.firestore().collection('users').add({
+            uid: userRecord.uid,
+            email,
+         
+        });
+
+        res.status(201).send(`User registered with ID: ${userRecord.uid}`);
     } catch (error) {
-        console.error(`Error registering user: ${error.message}`); 
-        res.status(500).send('Error registering user');
+        console.error(`Error registering user: ${error.code} - ${error.message}`);
+    if (error.code === 'auth/email-already-exists') {
+        return res.status(400).send('Email already in use.');
+    }
+    res.status(500).send(`Error registering user: ${error.message}`);
     }
 };
 
@@ -31,8 +42,9 @@ const loginUser = async (req, res) => {
     }
 
     try {
-        const userSnapshot = await admin.firestore().collection('users').where('email', '==', email).get();
         
+        const userSnapshot = await admin.firestore().collection('users').where('email', '==', email).get();
+
         if (userSnapshot.empty) {
             return res.status(401).send('Invalid email or password.');
         }
@@ -40,13 +52,13 @@ const loginUser = async (req, res) => {
         const userDoc = userSnapshot.docs[0];
         const userData = userDoc.data();
 
+        
         const isPasswordValid = await bcrypt.compare(password, userData.password);
 
         if (!isPasswordValid) {
             return res.status(401).send('Invalid email or password.');
         }
 
-      
         res.status(200).send(`Welcome back, ${email}!`);
     } catch (error) {
         console.error(`Error logging in: ${error.message}`); 
